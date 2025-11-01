@@ -1,0 +1,22 @@
+{
+  "name": "habit-backend",
+  "version": "1.0.0",
+  "description": "Backend event listener for Habit Platform",
+  "type": "module",
+  "main": "eventListener.js",
+  "scripts": {
+    "start": "node eventListener.js",
+    "dev": "node --watch eventListener.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.1",
+    "viem": "^2.7.15",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.6"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
