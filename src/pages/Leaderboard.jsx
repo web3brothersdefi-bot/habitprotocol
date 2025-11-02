@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useWallet } from '@aptos-labs/wallet-adapter-react';
+import { useAccount } from 'wagmi';
 import { motion } from 'framer-motion';
 import { Trophy, Medal, Award, TrendingUp } from 'lucide-react';
 import Layout from '../components/Layout';
@@ -9,8 +9,7 @@ import { useAuthStore } from '../store/useStore';
 import { getRoleBadgeClass, getRoleIcon, getIPFSUrl, formatAddress, normalizeAptosAddress } from '../utils/helpers';
 
 const Leaderboard = () => {
-  const { connected, account } = useWallet();
-  const address = account?.address;
+  const { address, isConnected } = useAccount();
   const { user } = useAuthStore();
   const [leaders, setLeaders] = useState([]);
   const [loading, setLoading] = useState(true);

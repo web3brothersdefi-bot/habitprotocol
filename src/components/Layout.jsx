@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { useWallet } from '@aptos-labs/wallet-adapter-react';
+import { useAccount, useDisconnect } from 'wagmi';
 import WalletSelector from './WalletSelector';
 import { Home, Mail, MessageCircle, Trophy, User, Settings, LogOut } from 'lucide-react';
 import Logo from './Logo';
@@ -8,8 +8,8 @@ import { useAuthStore } from '../store/useStore';
 import { motion } from 'framer-motion';
 
 const Layout = ({ children, showNavigation = true }) => {
-  const { connected, account, disconnect } = useWallet();
-  const address = account?.address;
+  const { address, isConnected } = useAccount();
+  const { disconnect } = useDisconnect();
   const navigate = useNavigate();
   const location = useLocation();
   const { clearUser } = useAuthStore();
@@ -22,6 +22,7 @@ const Layout = ({ children, showNavigation = true }) => {
 
   const navItems = [
     { icon: Home, label: 'Discover', path: '/dashboard' },
+    { icon: Mail, label: 'Requests', path: '/requests' },
     { icon: MessageCircle, label: 'Chats', path: '/chats' },
     { icon: Trophy, label: 'Leaderboard', path: '/leaderboard' },
     { icon: User, label: 'Profile', path: '/profile' },

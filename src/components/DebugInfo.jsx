@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-import { useWallet } from '@aptos-labs/wallet-adapter-react';
+import { useAccount } from 'wagmi';
 import { useAuthStore, useOnboardingStore } from '../store/useStore';
 
 const DebugInfo = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const { connected, account } = useWallet();
-  const address = account?.address;
+  const { address, isConnected } = useAccount();
   const { user } = useAuthStore();
   const { formData } = useOnboardingStore();
 
@@ -27,7 +26,7 @@ const DebugInfo = () => {
           <div className="space-y-2">
             <div>
               <p className="text-green-400">Wallet Connected:</p>
-              <p className="ml-2">{connected ? '✅ Yes' : '❌ No'}</p>
+              <p className="ml-2">{isConnected ? '✅ Yes' : '❌ No'}</p>
             </div>
 
             <div>

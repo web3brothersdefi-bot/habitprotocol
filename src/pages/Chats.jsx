@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useWallet } from '@aptos-labs/wallet-adapter-react';
+import { useAccount } from 'wagmi';
 import { motion } from 'framer-motion';
 import { Send, ArrowLeft } from 'lucide-react';
 import Layout from '../components/Layout';
@@ -10,8 +10,7 @@ import { useAuthStore } from '../store/useStore';
 import { formatAddress, getRoleIcon, getIPFSUrl, formatRelativeTime } from '../utils/helpers';
 
 const Chats = () => {
-  const { connected, account } = useWallet();
-  const address = account?.address;
+  const { address, isConnected } = useAccount();
   const { user } = useAuthStore();
   const { matches, loading: matchesLoading } = useMatches();
   const [selectedChat, setSelectedChat] = useState(null);

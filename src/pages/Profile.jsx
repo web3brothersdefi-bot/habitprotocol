@@ -1,5 +1,5 @@
 import React from 'react';
-import { useWallet } from '@aptos-labs/wallet-adapter-react';
+import { useAccount } from 'wagmi';
 import { motion } from 'framer-motion';
 import { Edit, Twitter, Linkedin, Github, Globe, Sparkles, Award } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -10,8 +10,7 @@ import { useAuthStore } from '../store/useStore';
 import { formatAddress, getRoleBadgeClass, getRoleIcon, getIPFSUrl, getReputationColor } from '../utils/helpers';
 
 const Profile = () => {
-  const { connected, account } = useWallet();
-  const address = account?.address;
+  const { address, isConnected } = useAccount();
   const { user } = useAuthStore();
   const navigate = useNavigate();
 

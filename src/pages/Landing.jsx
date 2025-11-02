@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useWallet } from '@aptos-labs/wallet-adapter-react';
+import { useAccount } from 'wagmi';
 import WalletSelector from '../components/WalletSelector';
 import { motion } from 'framer-motion';
 import Logo from '../components/Logo';
@@ -8,13 +8,12 @@ import { Sparkles, Users, Zap, Shield } from 'lucide-react';
 import { useAuthStore } from '../store/useStore';
 
 const Landing = () => {
-  const { connected, account } = useWallet();
-  const address = account?.address;
+  const { address, isConnected } = useAccount();
   const { user } = useAuthStore();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (connected && address) {
+    if (isConnected && address) {
       // Check if user exists in store (profile loaded from Supabase)
       if (user && user.name) {
         // Existing user - go to dashboard
@@ -26,7 +25,7 @@ const Landing = () => {
         navigate('/onboarding/role');
       }
     }
-  }, [connected, address, user, navigate]);
+  }, [isConnected, address, user, navigate]);
 
   const features = [
     {

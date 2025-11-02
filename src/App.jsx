@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useWallet } from '@aptos-labs/wallet-adapter-react';
+import { useAccount } from 'wagmi';
 import { Toaster } from 'react-hot-toast';
 import { useAuthStore } from './store/useStore';
 import { useUserProfile } from './hooks/useSupabase';
@@ -15,6 +15,7 @@ import Socials from './pages/onboarding/Socials';
 import HabitsGoals from './pages/onboarding/HabitsGoals';
 import Dashboard from './pages/Dashboard';
 import Requests from './pages/Requests';
+import ManageStakes from './pages/ManageStakes';
 import Chats from './pages/Chats';
 import Leaderboard from './pages/Leaderboard';
 import Profile from './pages/Profile';
@@ -22,10 +23,10 @@ import Settings from './pages/Settings';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
-  const { connected, account } = useWallet();
+  const { address, isConnected } = useAccount();
   const { user } = useAuthStore();
 
-  if (!connected || !account) {
+  if (!isConnected || !address) {
     return <Navigate to="/" replace />;
   }
 
@@ -38,13 +39,12 @@ const ProtectedRoute = ({ children }) => {
 
 // Onboarding Route Component
 const OnboardingRoute = ({ children }) => {
-  const { connected, account } = useWallet();
+  const { address, isConnected } = useAccount();
   const { user } = useAuthStore();
-  const address = account?.address;
   const { loading } = useUserProfile(address);
 
   // Not connected - redirect to landing
-  if (!connected || !account) {
+  if (!isConnected || !address) {
     return <Navigate to="/" replace />;
   }
 
@@ -68,14 +68,13 @@ const OnboardingRoute = ({ children }) => {
 };
 
 function App() {
-  const { connected, account } = useWallet();
+  const { address, isConnected } = useAccount();
   const { setUser, user, clearUser } = useAuthStore();
-  const address = account?.address;
   const { profile, loading } = useUserProfile(address);
 
   // Sync user profile from Supabase when wallet connects
   useEffect(() => {
-    if (!connected || !address) {
+    if (!isConnected || !address) {
       // Clear user when wallet disconnects
       clearUser();
       return;
@@ -95,7 +94,7 @@ function App() {
         }
       }
     }
-  }, [connected, address, profile, loading, setUser, clearUser, user]);
+  }, [isConnected, address, profile, loading, setUser, clearUser, user]);
 
   return (
     <Router>
@@ -160,6 +159,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <Requests />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/manage-stakes"
+            element={
+              <ProtectedRoute>
+                <ManageStakes />
               </ProtectedRoute>
             }
           />

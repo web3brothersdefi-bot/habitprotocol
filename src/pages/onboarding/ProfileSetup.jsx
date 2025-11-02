@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { useWallet } from '@aptos-labs/wallet-adapter-react';
+import { useAccount } from 'wagmi';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Upload, User, ChevronLeft } from 'lucide-react';
@@ -11,8 +11,7 @@ import { useOnboardingStore, useAuthStore } from '../../store/useStore';
 import { toast } from 'react-hot-toast';
 
 const ProfileSetup = () => {
-  const { connected, account } = useWallet();
-  const address = account?.address;
+  const { address, isConnected } = useAccount();
   const navigate = useNavigate();
   const { formData, updateFormData } = useOnboardingStore();
   const { setOnboardingStep } = useAuthStore();

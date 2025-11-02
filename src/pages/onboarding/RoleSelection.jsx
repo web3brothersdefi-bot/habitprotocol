@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useWallet } from '@aptos-labs/wallet-adapter-react';
+import { useAccount } from 'wagmi';
 import { motion } from 'framer-motion';
 import { Crown, Brain, Wallet } from 'lucide-react';
 import Logo from '../../components/Logo';
@@ -11,8 +11,7 @@ import { useOnboardingStore, useAuthStore } from '../../store/useStore';
 const RoleSelection = () => {
   const navigate = useNavigate();
   const { formData, updateFormData } = useOnboardingStore();
-  const { connected, account } = useWallet();
-  const address = account?.address;
+  const { address, isConnected } = useAccount();
   const { setOnboardingStep } = useAuthStore();
   const [selectedRole, setSelectedRole] = useState(formData.role);
 
@@ -41,7 +40,7 @@ const RoleSelection = () => {
   ];
 
   const handleNext = () => {
-    if (!connected) return;
+    if (!isConnected) return;
     
     updateFormData({ role: selectedRole });
     setOnboardingStep(2);

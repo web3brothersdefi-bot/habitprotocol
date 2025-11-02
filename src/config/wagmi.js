@@ -15,7 +15,7 @@ export const wagmiConfig = getDefaultConfig({
   ssr: false,
 });
 
-export const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || '0x0000000000000000000000000000000000000000';
+export const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || '0x20E7979abDdE55F098a4Ec77edF2079685278F27';
 
 // Base Sepolia USDC Address
 export const USDC_ADDRESS = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';

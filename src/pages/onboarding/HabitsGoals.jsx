@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useWallet } from '@aptos-labs/wallet-adapter-react';
+import { useAccount } from 'wagmi';
 import { motion } from 'framer-motion';
 import { ChevronLeft, Wrench, Users as UsersIcon, Brain, Rocket, Palette, Target, DollarSign, Eye, Sparkles } from 'lucide-react';
 import Logo from '../../components/Logo';
@@ -12,8 +12,7 @@ import { toast } from 'react-hot-toast';
 
 const HabitsGoals = () => {
   const navigate = useNavigate();
-  const { connected, account } = useWallet();
-  const address = account?.address;
+  const { address, isConnected } = useAccount();
   const { formData, updateFormData, resetFormData } = useOnboardingStore();
   const { setOnboardingStep, setUser } = useAuthStore();
   const { updateProfile, loading } = useUpdateProfile();

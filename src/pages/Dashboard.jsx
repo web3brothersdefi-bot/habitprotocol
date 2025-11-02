@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useWallet } from '@aptos-labs/wallet-adapter-react';
+import { useAccount } from 'wagmi';
 import { motion, useMotionValue, useTransform } from 'framer-motion';
 import { X, Heart, Search, SlidersHorizontal, Sparkles, Zap } from 'lucide-react';
 import Layout from '../components/Layout';
@@ -152,12 +152,11 @@ const SwipeCard = ({ user, onSwipe }) => {
 };
 
 const Dashboard = () => {
-  const { connected, account } = useWallet();
-  const address = account?.address;
+  const { address, isConnected } = useAccount();
   const { user } = useAuthStore();
   const [filters, setFilters] = useState({ role: null, skills: [] });
   const [showFilters, setShowFilters] = useState(false);
-  const { users, loading } = useDiscoverUsers(filters);
+  const { users, loading, refetch: refetchUsers } = useDiscoverUsers(filters);
   const [currentIndex, setCurrentIndex] = useState(0);
   const { stakeToConnect, loading: stakeLoading } = useStakeToConnect();
   const [isStaking, setIsStaking] = useState(false);
@@ -199,6 +198,10 @@ const Dashboard = () => {
           toast.success('Stake successful! Waiting for mutual interest...');
           // Move to next user
           setCurrentIndex((prev) => prev + 1);
+          // Refresh user list to exclude the staked user
+          setTimeout(() => {
+            refetchUsers();
+          }, 1000);
         }
       } catch (error) {
         console.error('Stake error:', error);

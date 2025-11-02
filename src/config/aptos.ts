@@ -1,135 +1,86 @@
-import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
-import { PetraWallet } from "petra-plugin-wallet-adapter";
+/**
+ * COMPATIBILITY FILE - Maps old Aptos config to new Base/wagmi config
+ * This file exists to maintain compatibility with existing imports
+ * All new code should import from './wagmi' instead
+ */
 
-// ========== APTOS CONFIGURATION ==========
+import { CONTRACT_ADDRESS, USDC_ADDRESS, STAKE_AMOUNT as WAGMI_STAKE_AMOUNT, REFUND_PERIOD as WAGMI_REFUND_PERIOD, RELEASE_PERIOD as WAGMI_RELEASE_PERIOD } from './wagmi';
 
-// Network configuration
-export const APTOS_NETWORK = Network.TESTNET; // Using testnet
-
-// Aptos client configuration
-const aptosConfig = new AptosConfig({
-  network: APTOS_NETWORK,
-});
-
-export const aptosClient = new Aptos(aptosConfig);
-
-// ========== WALLET CONFIGURATION ==========
-
-export const wallets = [
-  new PetraWallet(),
-];
-
-// ========== CONTRACT CONFIGURATION ==========
-
-// Module address (will be set after deployment)
-export const MODULE_ADDRESS = import.meta.env.VITE_MODULE_ADDRESS || "0x0";
-
-// Module name
+// Re-export from wagmi config for backward compatibility
+export const MODULE_ADDRESS = CONTRACT_ADDRESS;
 export const MODULE_NAME = "stake_match";
-
-// Full module ID
 export const MODULE_ID = `${MODULE_ADDRESS}::${MODULE_NAME}`;
 
-// ========== CONTRACT CONSTANTS ==========
-
-// Stake amount: 0.1 APT = 10,000,000 Octas (8 decimals)
-export const STAKE_AMOUNT = 10_000_000n; // 0.1 APT
-
-// Time periods
-export const REFUND_PERIOD = 2 * 24 * 60 * 60; // 2 days in seconds
-export const RELEASE_PERIOD = 7 * 24 * 60 * 60; // 7 days in seconds
-
-// Platform fee
+// Contract constants (converted from Aptos to Base/USDC)
+export const STAKE_AMOUNT = WAGMI_STAKE_AMOUNT; // 1 USDC (6 decimals)
+export const REFUND_PERIOD = WAGMI_REFUND_PERIOD; // 2 days in seconds
+export const RELEASE_PERIOD = WAGMI_RELEASE_PERIOD; // 7 days in seconds
 export const PLATFORM_FEE_BPS = 100; // 1% = 100 basis points
 
-// ========== HELPER FUNCTIONS ==========
+// Dummy client for compatibility
+export const aptosClient = {
+  waitForTransaction: async () => ({ success: true })
+};
 
-/**
- * Format APT amount from Octas
- */
-export function formatAPT(octas: bigint | number): string {
-  const amount = typeof octas === 'bigint' ? Number(octas) : octas;
-  return (amount / 100_000_000).toFixed(2);
+// Helper functions
+export function formatAPT(amount: bigint | number): string {
+  const num = typeof amount === 'bigint' ? Number(amount) : amount;
+  return (num / 1_000_000).toFixed(2); // USDC has 6 decimals
 }
 
-/**
- * Convert APT to Octas
- */
-export function aptToOctas(apt: number): bigint {
-  return BigInt(Math.floor(apt * 100_000_000));
+export function aptToOctas(usdc: number): bigint {
+  return BigInt(Math.floor(usdc * 1_000_000)); // USDC has 6 decimals
 }
 
-/**
- * Format Aptos address for display
- */
 export function formatAddress(address: string, chars = 4): string {
   if (!address) return '';
   return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`;
 }
 
-/**
- * Validate Aptos address format
- */
 export function isValidAptosAddress(address: string): boolean {
-  // Aptos addresses are 32 bytes (64 hex chars) with 0x prefix
-  const addressRegex = /^0x[a-fA-F0-9]{64}$/;
+  // Ethereum addresses are 20 bytes (40 hex chars) with 0x prefix
+  const addressRegex = /^0x[a-fA-F0-9]{40}$/;
   return addressRegex.test(address);
 }
 
-/**
- * Normalize Aptos address (add leading zeros if needed)
- */
 export function normalizeAddress(address: string): string {
   if (!address.startsWith('0x')) {
     address = '0x' + address;
   }
-  // Pad to 64 hex characters
-  const hexPart = address.slice(2);
-  return '0x' + hexPart.padStart(64, '0');
+  return address.toLowerCase();
 }
 
-// ========== TRANSACTION CONFIGURATION ==========
-
 export const TX_OPTIONS = {
-  max_gas_amount: "10000",
-  gas_unit_price: "100",
+  max_gas_amount: "100000",
+  gas_unit_price: "1",
 };
-
-// ========== FUNCTION NAMES ==========
 
 export const FUNCTIONS = {
-  INITIALIZE: `${MODULE_ID}::initialize`,
-  STAKE_TO_CONNECT: `${MODULE_ID}::stake_to_connect`,
-  REFUND_EXPIRED_STAKE: `${MODULE_ID}::refund_expired_stake`,
-  RELEASE_STAKE: `${MODULE_ID}::release_stake_after_match`,
-  GET_STAKE_STATUS: `${MODULE_ID}::get_stake_status`,
-  IS_MATCHED: `${MODULE_ID}::is_matched`,
-  GET_STAKE_AMOUNT: `${MODULE_ID}::get_stake_amount`,
+  INITIALIZE: 'initialize', // Not used on Base
+  STAKE_TO_CONNECT: 'stakeToConnect',
+  REFUND_EXPIRED_STAKE: 'refundExpiredStake',
+  RELEASE_STAKE: 'releaseStakeAfterMatch',
+  GET_STAKE_STATUS: 'getStakeStatus',
+  IS_MATCHED: 'isMatched',
+  GET_STAKE_AMOUNT: 'STAKE_AMOUNT',
 };
-
-// ========== EXPLORER LINKS ==========
 
 export function getExplorerLink(
   type: 'transaction' | 'account' | 'module',
   identifier: string
 ): string {
-  const baseUrl = APTOS_NETWORK === Network.MAINNET
-    ? 'https://explorer.aptoslabs.com'
-    : 'https://explorer.aptoslabs.com/?network=testnet';
+  const baseUrl = 'https://sepolia.basescan.org';
   
   switch (type) {
     case 'transaction':
-      return `${baseUrl}/txn/${identifier}`;
+      return `${baseUrl}/tx/${identifier}`;
     case 'account':
-      return `${baseUrl}/account/${identifier}`;
     case 'module':
-      return `${baseUrl}/account/${identifier}?tab=modules`;
+      return `${baseUrl}/address/${identifier}`;
     default:
       return baseUrl;
   }
 }
-
-// ========== TYPE DEFINITIONS ==========
 
 export interface StakeStatus {
   pending: boolean;
@@ -145,8 +96,6 @@ export interface StakeInfo {
   timestamp: number;
   status: StakeStatus;
 }
-
-// ========== ERROR CODES ==========
 
 export const ERROR_CODES = {
   E_NOT_INITIALIZED: 1,
@@ -186,7 +135,7 @@ export function getErrorMessage(code: number): string {
     case ERROR_CODES.E_ALREADY_RELEASED:
       return "Stake already released";
     case ERROR_CODES.E_INVALID_AMOUNT:
-      return "Invalid stake amount";
+      return "Invalid stake amount (must be 1 USDC)";
     case ERROR_CODES.E_UNAUTHORIZED:
       return "Unauthorized action";
     default:

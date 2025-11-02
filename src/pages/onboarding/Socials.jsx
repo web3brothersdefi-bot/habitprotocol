@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useWallet } from '@aptos-labs/wallet-adapter-react';
+import { useAccount } from 'wagmi';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ChevronLeft, Twitter, Linkedin, Globe, Github } from 'lucide-react';
@@ -10,8 +10,7 @@ import Input from '../../components/Input';
 import { useOnboardingStore, useAuthStore } from '../../store/useStore';
 
 const Socials = () => {
-  const { connected, account } = useWallet();
-  const address = account?.address;
+  const { address, isConnected } = useAccount();
   const navigate = useNavigate();
   const { formData, updateFormData } = useOnboardingStore();
   const { setOnboardingStep } = useAuthStore();

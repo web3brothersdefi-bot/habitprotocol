@@ -1,5 +1,5 @@
 import React from 'react';
-import { useWallet } from '@aptos-labs/wallet-adapter-react';
+import { useAccount } from 'wagmi';
 import { motion } from 'framer-motion';
 import { Wallet, Bell, Shield, LogOut, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -11,7 +11,7 @@ import { formatAddress } from '../utils/helpers';
 import { toast } from 'react-hot-toast';
 
 const Settings = () => {
-  const { connected, account, disconnect } = useWallet();
+  const { isConnected, account, disconnect } = useWallet();
   const address = account?.address;
   const navigate = useNavigate();
   const { user, clearUser } = useAuthStore();
@@ -58,7 +58,7 @@ const Settings = () => {
           <div className="space-y-3">
             <div className="flex items-center justify-between p-4 glass-card rounded-xl">
               <div>
-                <p className="text-sm text-grey">Connected Address</p>
+                <p className="text-sm text-grey">isConnected Address</p>
                 <p className="font-semibold font-mono">{formatAddress(address)}</p>
               </div>
               <Button
