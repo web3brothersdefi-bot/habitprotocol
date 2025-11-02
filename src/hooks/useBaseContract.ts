@@ -1,19 +1,22 @@
 /**
- * Base Contract Hooks - Simplified for Base blockchain
- * Uses wagmi for contract interactions
+ * Base Contract Hooks - Production Ready with Transaction Waiting
+ * Uses wagmi for contract interactions with proper state management
  */
 
 import { useState } from 'react';
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract, usePublicClient } from 'wagmi';
+import { getAddress, isAddress } from 'viem';
 import { toast } from 'react-hot-toast';
 import { CONTRACT_ADDRESS, USDC_ADDRESS, STAKE_MATCH_ABI, ERC20_ABI, STAKE_AMOUNT } from '../config/wagmi';
 
 /**
  * Hook for staking to connect with another user
+ * Returns transaction hash and waits for confirmation
  */
 export const useStakeToConnect = () => {
   const { address } = useAccount();
-  const { writeContract, data: hash } = useWriteContract();
+  const { writeContractAsync } = useWriteContract();
+  const publicClient = usePublicClient();
   const [loading, setLoading] = useState(false);
 
   const stakeToConnect = async (targetAddress: string) => {
@@ -24,20 +27,61 @@ export const useStakeToConnect = () => {
 
     setLoading(true);
     try {
-      // Call stakeToConnect function
-      writeContract({
+      // Validate and normalize target address
+      if (!targetAddress) {
+        throw new Error('Target address is required');
+      }
+
+      // Ensure address is exactly 42 characters (0x + 40 hex)
+      let cleanAddress = targetAddress.trim().toLowerCase();
+      
+      // If address is longer than 42 characters, truncate to first 42
+      if (cleanAddress.length > 42) {
+        console.warn('Address too long, truncating:', cleanAddress);
+        cleanAddress = cleanAddress.substring(0, 42);
+      }
+      
+      // Validate address format
+      if (!isAddress(cleanAddress)) {
+        throw new Error('Invalid Ethereum address format');
+      }
+      
+      // Get checksummed address
+      const checksummedAddress = getAddress(cleanAddress);
+      console.log('Validated address:', checksummedAddress);
+      
+      // Call stakeToConnect function and wait for tx hash
+      const hash = await writeContractAsync({
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: STAKE_MATCH_ABI,
         functionName: 'stakeToConnect',
-        args: [targetAddress as `0x${string}`],
+        args: [checksummedAddress as `0x${string}`],
       });
 
-      toast.success('Stake transaction submitted!');
+      console.log('Transaction hash:', hash);
+      
+      // Wait for transaction confirmation
+      if (publicClient) {
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        console.log('Transaction confirmed:', receipt);
+        
+        if (receipt.status === 'success') {
+          // Stake recorded on-chain! No Supabase needed.
+          return hash;
+        }
+      }
+      
       return hash;
     } catch (error: any) {
       console.error('Stake error:', error);
-      toast.error(error.message || 'Failed to stake');
-      return null;
+      
+      if (error.message?.includes('User rejected') || error.message?.includes('User denied')) {
+        throw new Error('Transaction rejected');
+      } else if (error.message?.includes('insufficient')) {
+        throw new Error('Insufficient USDC or ETH for gas');
+      } else {
+        throw new Error(error.message || 'Failed to stake');
+      }
     } finally {
       setLoading(false);
     }
@@ -156,10 +200,12 @@ export const useIsMatched = (userA?: string, userB?: string) => {
 
 /**
  * Hook for approving USDC spending
+ * Waits for transaction confirmation before returning
  */
 export const useApproveUSDC = () => {
   const { address } = useAccount();
-  const { writeContract, data: hash } = useWriteContract();
+  const { writeContractAsync } = useWriteContract();
+  const publicClient = usePublicClient();
   const [loading, setLoading] = useState(false);
 
   const approveUSDC = async () => {
@@ -170,19 +216,35 @@ export const useApproveUSDC = () => {
 
     setLoading(true);
     try {
-      writeContract({
+      // Call approve function and wait for tx hash
+      const hash = await writeContractAsync({
         address: USDC_ADDRESS as `0x${string}`,
         abi: ERC20_ABI,
         functionName: 'approve',
         args: [CONTRACT_ADDRESS as `0x${string}`, STAKE_AMOUNT],
       });
 
-      toast.success('USDC approval submitted!');
+      console.log('Approval hash:', hash);
+      
+      // Wait for transaction confirmation
+      if (publicClient) {
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        console.log('Approval confirmed:', receipt);
+        
+        if (receipt.status === 'success') {
+          return hash;
+        }
+      }
+      
       return hash;
     } catch (error: any) {
       console.error('Approval error:', error);
-      toast.error(error.message || 'Failed to approve USDC');
-      return null;
+      
+      if (error.message?.includes('User rejected') || error.message?.includes('User denied')) {
+        throw new Error('Approval rejected');
+      } else {
+        throw new Error(error.message || 'Failed to approve USDC');
+      }
     } finally {
       setLoading(false);
     }

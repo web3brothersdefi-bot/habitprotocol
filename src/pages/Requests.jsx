@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Heart, Clock, Mail, Send, CheckCircle, Users } from 'lucide-react';
+import { Heart, Clock, Mail, Send, CheckCircle, Users, ExternalLink } from 'lucide-react';
 import Layout from '../components/Layout';
 import Card from '../components/Card';
 import Button from '../components/Button';
-import { useIncomingRequests, useOutgoingRequests } from '../hooks/useSupabase';
-import { useStakeToConnect } from '../hooks/useAptosContract';
+import { useAccount } from 'wagmi';
+import { supabase, TABLES } from '../config/supabase';
+import { useStakeToConnect } from '../hooks/useBaseContract';
+import { useIncomingStakes, useOutgoingStakes } from '../hooks/useStakesFinal';
 import { getRoleBadgeClass, getRoleIcon, formatAddress, getIPFSUrl } from '../utils/helpers';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -18,8 +20,6 @@ const RequestCard = ({ request, isIncoming, onAccept, isAccepting }) => {
     return null;
   }
 
-  const RoleIcon = getRoleIcon(profile.role);
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -31,9 +31,9 @@ const RequestCard = ({ request, isIncoming, onAccept, isAccepting }) => {
           {/* Profile Image */}
           <div className="relative flex-shrink-0">
             <div className="w-20 h-20 rounded-full overflow-hidden bg-dark-light border-2 border-primary/30">
-              {profile.profile_image ? (
+              {profile.image_url ? (
                 <img
-                  src={getIPFSUrl(profile.profile_image)}
+                  src={getIPFSUrl(profile.image_url)}
                   alt={profile.name}
                   className="w-full h-full object-cover"
                 />
@@ -57,7 +57,6 @@ const RequestCard = ({ request, isIncoming, onAccept, isAccepting }) => {
                 {profile.name}
               </h3>
               <span className={`text-xs px-2 py-1 rounded-full ${getRoleBadgeClass(profile.role)}`}>
-                <RoleIcon className="w-3 h-3 inline mr-1" />
                 {profile.role}
               </span>
             </div>
@@ -77,12 +76,14 @@ const RequestCard = ({ request, isIncoming, onAccept, isAccepting }) => {
             <div className="flex items-center gap-2 text-xs text-gray-500">
               <Clock className="w-3 h-3" />
               <span>
-                {new Date(request.created_at).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
+                {request.timestamp ? 
+                  new Date(Number(request.timestamp) * 1000).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  }) : 'Recent'
+                }
               </span>
             </div>
 
@@ -123,12 +124,12 @@ const RequestCard = ({ request, isIncoming, onAccept, isAccepting }) => {
                   ) : (
                     <div className="flex items-center gap-2">
                       <CheckCircle className="w-4 h-4" />
-                      <span>Accept (0.1 APT)</span>
+                      <span>Accept (1 USDC)</span>
                     </div>
                   )}
                 </Button>
                 <Button
-                  onClick={() => navigate(`/profile?address=${profile.wallet_address}`)}
+                  onClick={() => navigate(`/profile/${profile.wallet_address}`)}
                   variant="secondary"
                   className="text-xs"
                 >
@@ -137,17 +138,37 @@ const RequestCard = ({ request, isIncoming, onAccept, isAccepting }) => {
               </>
             ) : (
               <div className="flex flex-col items-center gap-2">
-                <div className="flex items-center gap-1 text-yellow-400 text-sm">
-                  <Clock className="w-4 h-4" />
-                  <span>Pending</span>
+                <div className="flex items-center gap-1 text-sm">
+                  {request.matched ? (
+                    <>
+                      <CheckCircle className="w-4 h-4 text-green-400" />
+                      <span className="text-green-400">Matched!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Clock className="w-4 h-4 text-yellow-400" />
+                      <span className="text-yellow-400">Pending</span>
+                    </>
+                  )}
                 </div>
-                <Button
-                  onClick={() => navigate(`/profile?address=${profile.wallet_address}`)}
-                  variant="secondary"
-                  className="text-xs"
-                >
-                  View Profile
-                </Button>
+                
+                {/* If matched, show Chat button, otherwise View Profile */}
+                {request.matched ? (
+                  <Button
+                    onClick={() => navigate(`/chats?with=${profile.wallet_address}`)}
+                    className="text-xs bg-gradient-to-r from-primary to-purple-500"
+                  >
+                    💬 Chat Here
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={() => navigate(`/profile/${profile.wallet_address}`)}
+                    variant="secondary"
+                    className="text-xs"
+                  >
+                    View Profile
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -157,12 +178,25 @@ const RequestCard = ({ request, isIncoming, onAccept, isAccepting }) => {
         <div className="mt-4 pt-4 border-t border-white/10">
           <div className="flex items-center justify-between text-xs text-gray-500">
             <span>Stake Amount:</span>
-            <span className="text-primary font-semibold">0.1 APT</span>
+            <span className="text-primary font-semibold">1 USDC</span>
           </div>
           <div className="flex items-center justify-between text-xs text-gray-500 mt-1">
             <span>Wallet:</span>
             <span className="font-mono">{formatAddress(profile.wallet_address)}</span>
           </div>
+          {request.transaction_hash && (
+            <div className="flex items-center justify-between text-xs text-gray-500 mt-1">
+              <span>Transaction:</span>
+              <a 
+                href={`https://sepolia.basescan.org/tx/${request.transaction_hash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline flex items-center gap-1"
+              >
+                View <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          )}
         </div>
       </Card>
     </motion.div>
@@ -171,41 +205,142 @@ const RequestCard = ({ request, isIncoming, onAccept, isAccepting }) => {
 
 const Requests = () => {
   const [activeTab, setActiveTab] = useState('inbox'); // 'inbox' or 'sent'
-  const { requests: incomingRequests, loading: incomingLoading } = useIncomingRequests();
-  const { requests: outgoingRequests, loading: outgoingLoading } = useOutgoingRequests();
+  const { address, isConnected } = useAccount();
   const { stakeToConnect, loading: staking } = useStakeToConnect();
   const [acceptingId, setAcceptingId] = useState(null);
   const navigate = useNavigate();
 
-  const handleAcceptRequest = async (request) => {
-    if (!request.profile) {
-      toast.error('Profile not found');
+  // Fetch stakes from blockchain
+  const { stakes: incomingStakes, loading: incomingLoading, error: incomingError } = useIncomingStakes();
+  const { stakes: outgoingStakes, loading: outgoingLoading, error: outgoingError } = useOutgoingStakes();
+
+  // Fetch user profiles for stakes
+  const [incomingWithUsers, setIncomingWithUsers] = useState([]);
+  const [outgoingWithUsers, setOutgoingWithUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchUserProfiles = async () => {
+      setLoading(true);
+      try {
+        // Fetch user profiles for incoming stakes
+        if (incomingStakes.length > 0) {
+          const incomingWithProfiles = await Promise.all(
+            incomingStakes.map(async (stake) => {
+              try {
+                const { data: user } = await supabase
+                  .from(TABLES.USERS)
+                  .select('*')
+                  .eq('wallet_address', stake.staker_address.toLowerCase())
+                  .maybeSingle();
+                
+                return { 
+                  ...stake, 
+                  staker_user: user || {
+                    wallet_address: stake.staker_address,
+                    name: formatAddress(stake.staker_address),
+                    role: 'user'
+                  }
+                };
+              } catch (err) {
+                return {
+                  ...stake,
+                  staker_user: {
+                    wallet_address: stake.staker_address,
+                    name: formatAddress(stake.staker_address),
+                    role: 'user'
+                  }
+                };
+              }
+            })
+          );
+          setIncomingWithUsers(incomingWithProfiles);
+        } else {
+          setIncomingWithUsers([]);
+        }
+
+        // Fetch user profiles for outgoing stakes
+        if (outgoingStakes.length > 0) {
+          const outgoingWithProfiles = await Promise.all(
+            outgoingStakes.map(async (stake) => {
+              try {
+                const { data: user } = await supabase
+                  .from(TABLES.USERS)
+                  .select('*')
+                  .eq('wallet_address', stake.target_address.toLowerCase())
+                  .maybeSingle();
+                
+                return { 
+                  ...stake, 
+                  target_user: user || {
+                    wallet_address: stake.target_address,
+                    name: formatAddress(stake.target_address),
+                    role: 'user'
+                  }
+                };
+              } catch (err) {
+                return {
+                  ...stake,
+                  target_user: {
+                    wallet_address: stake.target_address,
+                    name: formatAddress(stake.target_address),
+                    role: 'user'
+                  }
+                };
+              }
+            })
+          );
+          setOutgoingWithUsers(outgoingWithProfiles);
+        } else {
+          setOutgoingWithUsers([]);
+        }
+      } catch (error) {
+        console.error('Error fetching user profiles:', error);
+        setIncomingWithUsers([]);
+        setOutgoingWithUsers([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (!incomingLoading && !outgoingLoading) {
+      fetchUserProfiles();
+    }
+  }, [incomingStakes, outgoingStakes, incomingLoading, outgoingLoading]);
+
+  const handleAcceptRequest = async (stake) => {
+    if (!stake.staker_user) {
+      toast.error('User not found');
       return;
     }
 
-    setAcceptingId(request.id);
+    setAcceptingId(stake.id);
     try {
-      // Stake to connect with this user
-      const result = await stakeToConnect(request.profile.wallet_address);
+      toast.loading('Accepting request...', { duration: Infinity });
+      
+      // Stake to connect with this user (will create match)
+      const result = await stakeToConnect(stake.staker_address);
       
       if (result) {
-        toast.success('Request accepted! Checking for match...');
-        // The hook will automatically check and create match if both staked
-        // Refresh page after a delay to show updated state
+        toast.dismiss();
+        toast.success('✅ Request accepted! You are now matched!', { duration: 3000 });
+        
+        // Refresh stakes after a delay
         setTimeout(() => {
           window.location.reload();
         }, 2000);
       }
     } catch (error) {
       console.error('Error accepting request:', error);
-      toast.error('Failed to accept request');
+      toast.dismiss();
+      toast.error(error.message || 'Failed to accept request');
     } finally {
       setAcceptingId(null);
     }
   };
 
-  const inboxCount = incomingRequests.length;
-  const sentCount = outgoingRequests.length;
+  const inboxCount = incomingWithUsers.length;
+  const sentCount = outgoingWithUsers.length;
 
   return (
     <Layout>
@@ -291,7 +426,7 @@ const Requests = () => {
                 <p className="text-sm text-gray-400">
                   {activeTab === 'inbox' ? (
                     <>
-                      Accept requests by staking 0.1 APT. If both users stake, you'll instantly match and can start chatting!
+                      Accept requests by staking 1 USDC. If both users stake, you'll instantly match and can start chatting!
                     </>
                   ) : (
                     <>
@@ -312,44 +447,53 @@ const Requests = () => {
           className="space-y-4"
         >
           {activeTab === 'inbox' ? (
-            incomingLoading ? (
+            loading ? (
               <Card className="p-12 text-center">
                 <div className="flex justify-center mb-4">
                   <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
                 </div>
-                <p className="text-gray-400">Loading requests...</p>
+                <p className="text-gray-400">Loading incoming requests...</p>
               </Card>
-            ) : incomingRequests.length === 0 ? (
+            ) : incomingWithUsers.length === 0 ? (
               <Card className="p-12 text-center">
                 <Mail className="w-16 h-16 text-gray-600 mx-auto mb-4" />
                 <h3 className="text-xl font-bold text-white mb-2">No Incoming Requests</h3>
                 <p className="text-gray-400 mb-4">
                   No one has sent you a connection request yet.
                 </p>
+                {incomingError && (
+                  <div className="mb-4 p-4 bg-red-500/10 border border-red-500/30 rounded-xl max-w-md mx-auto">
+                    <p className="text-sm text-red-400">⚠️ Check console for details</p>
+                  </div>
+                )}
+                <div className="mb-6 p-4 bg-primary/10 border border-primary/30 rounded-xl max-w-md mx-auto text-sm text-left">
+                  <p className="font-semibold mb-2">💡 Tip:</p>
+                  <p className="text-grey">Make sure you're using the wallet that received the stake. Check console to see which addresses have stakes.</p>
+                </div>
                 <Button onClick={() => navigate('/dashboard')}>
                   Discover Users
                 </Button>
               </Card>
             ) : (
-              incomingRequests.map((request) => (
+              incomingWithUsers.map((stake, index) => (
                 <RequestCard
-                  key={request.id}
-                  request={request}
+                  key={`incoming-${stake.transaction_hash}-${index}`}
+                  request={{ ...stake, profile: stake.staker_user }}
                   isIncoming={true}
-                  onAccept={handleAcceptRequest}
-                  isAccepting={acceptingId === request.id}
+                  onAccept={() => handleAcceptRequest(stake)}
+                  isAccepting={acceptingId === stake.transaction_hash}
                 />
               ))
             )
           ) : (
-            outgoingLoading ? (
+            loading ? (
               <Card className="p-12 text-center">
                 <div className="flex justify-center mb-4">
                   <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
                 </div>
                 <p className="text-gray-400">Loading sent requests...</p>
               </Card>
-            ) : outgoingRequests.length === 0 ? (
+            ) : outgoingWithUsers.length === 0 ? (
               <Card className="p-12 text-center">
                 <Send className="w-16 h-16 text-gray-600 mx-auto mb-4" />
                 <h3 className="text-xl font-bold text-white mb-2">No Sent Requests</h3>
@@ -361,10 +505,10 @@ const Requests = () => {
                 </Button>
               </Card>
             ) : (
-              outgoingRequests.map((request) => (
+              outgoingWithUsers.map((stake, index) => (
                 <RequestCard
-                  key={request.id}
-                  request={request}
+                  key={`outgoing-${stake.transaction_hash}-${index}`}
+                  request={{ ...stake, profile: stake.target_user }}
                   isIncoming={false}
                 />
               ))

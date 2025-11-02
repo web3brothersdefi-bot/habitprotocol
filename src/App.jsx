@@ -19,7 +19,9 @@ import ManageStakes from './pages/ManageStakes';
 import Chats from './pages/Chats';
 import Leaderboard from './pages/Leaderboard';
 import Profile from './pages/Profile';
+import EditProfile from './pages/EditProfile';
 import Settings from './pages/Settings';
+import ContractTest from './pages/ContractTest';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -195,10 +197,34 @@ function App() {
             }
           />
           <Route
+            path="/profile/:walletAddress"
+            element={
+              <ProtectedRoute>
+                <Profile />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/edit-profile"
+            element={
+              <ProtectedRoute>
+                <EditProfile />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/settings"
             element={
               <ProtectedRoute>
                 <Settings />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/contract-test"
+            element={
+              <ProtectedRoute>
+                <ContractTest />
               </ProtectedRoute>
             }
           />

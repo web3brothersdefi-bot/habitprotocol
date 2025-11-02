@@ -168,25 +168,13 @@ export const useDiscoverUsers = (filters = {}) => {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const normalizedAddress = normalizeAptosAddress(user?.wallet_address || '');
+        const normalizedAddress = user?.wallet_address?.toLowerCase() || '';
         
-        // First, get all pending stakes by current user
-        const { data: pendingStakes, error: stakesError } = await supabase
-          .from(TABLES.STAKES)
-          .select('target')
-          .eq('staker', normalizedAddress)
-          .eq('status', 'pending');
-
-        if (stakesError) throw stakesError;
-
-        // Extract target addresses to exclude
-        const excludedAddresses = pendingStakes?.map(s => s.target) || [];
-        excludedAddresses.push(normalizedAddress); // Exclude self
-
+        // Build query for users
         let query = supabase
           .from(TABLES.USERS)
           .select('*')
-          .not('wallet_address', 'in', `(${excludedAddresses.map(a => `"${a}"`).join(',')})`);
+          .neq('wallet_address', normalizedAddress); // Exclude self
 
         // Apply role filter
         if (filters.role) {
@@ -201,6 +189,14 @@ export const useDiscoverUsers = (filters = {}) => {
         const { data, error } = await query;
 
         if (error) throw error;
+        
+        // Debug: Check image URLs
+        console.log('👥 Discovered users:', data?.length || 0);
+        data?.forEach(u => {
+          if (!u.image_url) {
+            console.log(`⚠️ User ${u.name} has no image_url`);
+          }
+        });
         
         // Shuffle users for random discovery
         const shuffled = data.sort(() => Math.random() - 0.5);
@@ -218,10 +214,41 @@ export const useDiscoverUsers = (filters = {}) => {
     }
   }, [user, filters]);
 
-  const refetchUsers = () => {
-    if (user) {
-      setLoading(true);
-      fetchUsers();
+  const refetchUsers = async () => {
+    if (!user) return;
+    
+    setLoading(true);
+    try {
+      const normalizedAddress = user?.wallet_address?.toLowerCase() || '';
+
+      // Build query
+      let query = supabase
+        .from(TABLES.USERS)
+        .select('*')
+        .neq('wallet_address', normalizedAddress); // Exclude self
+
+      // Apply role filter
+      if (filters.role) {
+        query = query.eq('role', filters.role);
+      }
+
+      // Apply skills filter
+      if (filters.skills && filters.skills.length > 0) {
+        query = query.contains('skills', filters.skills);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      
+      // Shuffle users for random discovery
+      const shuffled = data.sort(() => Math.random() - 0.5);
+      setUsers(shuffled);
+    } catch (err) {
+      console.error('Error fetching users:', err);
+      toast.error('Failed to load users');
+    } finally {
+      setLoading(false);
     }
   };
 

@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAccount } from 'wagmi';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ChevronLeft, Wrench, Users as UsersIcon, Brain, Rocket, Palette, Target, DollarSign, Eye, Sparkles } from 'lucide-react';
+import { ChevronLeft, Sparkles, Target, Wrench, Users as UsersIcon, Brain, Rocket, Palette, DollarSign, Eye } from 'lucide-react';
 import Logo from '../../components/Logo';
 import Card from '../../components/Card';
 import Button from '../../components/Button';
 import { useOnboardingStore, useAuthStore } from '../../store/useStore';
 import { useUpdateProfile } from '../../hooks/useSupabase';
+import { uploadProfileImage } from '../../utils/imageUpload';
 import { toast } from 'react-hot-toast';
 
 const HabitsGoals = () => {
@@ -64,11 +65,27 @@ const HabitsGoals = () => {
       // Update form data with final values
       updateFormData({ dailyHabit, purpose });
 
+      // Upload profile image if exists
+      let imageUrl = null;
+      if (formData.profileImage) {
+        toast.loading('Uploading profile image...');
+        try {
+          imageUrl = await uploadProfileImage(formData.profileImage, address);
+          toast.dismiss();
+          toast.success('Image uploaded!');
+        } catch (imgError) {
+          toast.dismiss();
+          console.error('Image upload error:', imgError);
+          toast.error('Failed to upload image. Continuing without it.');
+        }
+      }
+
       // Prepare profile data for Supabase with explicit null checks
       const profileData = {
         role: formData.role.trim(),
         name: formData.name.trim(),
         bio: formData.bio?.trim() || null,
+        image_url: imageUrl, // ADD IMAGE URL HERE
         skills: Array.isArray(formData.skills) ? formData.skills : [],
         // Ensure experience_level is lowercase and null if empty
         experience_level: formData.experienceLevel 
@@ -91,7 +108,9 @@ const HabitsGoals = () => {
       };
 
       // Save to Supabase
+      toast.loading('Saving profile...');
       const savedProfile = await updateProfile(address, profileData);
+      toast.dismiss();
 
       // Update auth store with saved profile data (includes normalized address)
       setUser(savedProfile);

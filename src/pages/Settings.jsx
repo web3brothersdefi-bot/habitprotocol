@@ -11,20 +11,24 @@ import { formatAddress } from '../utils/helpers';
 import { toast } from 'react-hot-toast';
 
 const Settings = () => {
-  const { isConnected, account, disconnect } = useWallet();
-  const address = account?.address;
+  const { address, isConnected, chain } = useAccount();
   const navigate = useNavigate();
   const { user, clearUser } = useAuthStore();
 
-  const handleLogout = () => {
-    disconnect();
-    clearUser();
-    toast.success('Logged out successfully');
-    navigate('/');
+  const handleLogout = async () => {
+    try {
+      // Note: RainbowKit handles wallet disconnection
+      clearUser();
+      toast.success('Logged out successfully');
+      navigate('/');
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast.error('Failed to logout');
+    }
   };
 
   const handleEditProfile = () => {
-    navigate('/onboarding/profile');
+    navigate('/edit-profile');
   };
 
   if (!address || !user) {

@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
+import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Edit, Twitter, Linkedin, Github, Globe, Sparkles, Award } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -7,12 +8,69 @@ import Layout from '../components/Layout';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import { useAuthStore } from '../store/useStore';
+import { supabase, TABLES } from '../config/supabase';
 import { formatAddress, getRoleBadgeClass, getRoleIcon, getIPFSUrl, getReputationColor } from '../utils/helpers';
 
 const Profile = () => {
   const { address, isConnected } = useAccount();
-  const { user } = useAuthStore();
+  const { user: currentUser } = useAuthStore();
+  const { walletAddress } = useParams(); // Get wallet address from URL
   const navigate = useNavigate();
+  const [profileUser, setProfileUser] = useState(null);
+  const [loading, setLoading] = useState(false);
+  
+  // Determine if viewing own profile or someone else's
+  const isOwnProfile = !walletAddress || walletAddress.toLowerCase() === address?.toLowerCase();
+  const user = isOwnProfile ? currentUser : profileUser;
+
+  // Fetch profile data if viewing someone else's profile
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!isOwnProfile && walletAddress) {
+        setLoading(true);
+        try {
+          const { data, error } = await supabase
+            .from(TABLES.USERS)
+            .select('*')
+            .eq('wallet_address', walletAddress.toLowerCase())
+            .maybeSingle();
+          
+          if (data) {
+            setProfileUser(data);
+          } else {
+            // User not found in database, create placeholder
+            setProfileUser({
+              wallet_address: walletAddress,
+              name: formatAddress(walletAddress),
+              role: 'user',
+              bio: 'User profile not found',
+              reputation_score: 50,
+              image_url: null
+            });
+          }
+        } catch (err) {
+          console.error('Error fetching profile:', err);
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchProfile();
+  }, [walletAddress, isOwnProfile]);
+
+  if (!address || (!isOwnProfile && !user && loading)) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <Card className="p-8 text-center">
+            <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-4" />
+            <p>Loading profile...</p>
+          </Card>
+        </div>
+      </Layout>
+    );
+  }
 
   if (!address || !user) {
     return (
@@ -79,14 +137,16 @@ const Profile = () => {
                 </div>
               </div>
 
-              {/* Edit Button */}
-              <Button
-                onClick={() => navigate('/settings')}
-                variant="secondary"
-                icon={<Edit className="w-5 h-5" />}
-              >
-                Edit Profile
-              </Button>
+              {/* Edit Button - Only show for own profile */}
+              {isOwnProfile && (
+                <Button
+                  onClick={() => navigate('/settings')}
+                  variant="secondary"
+                  icon={<Edit className="w-5 h-5" />}
+                >
+                  Edit Profile
+                </Button>
+              )}
             </div>
           </div>
         </Card>

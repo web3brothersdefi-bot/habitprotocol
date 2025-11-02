@@ -15,7 +15,7 @@ export const wagmiConfig = getDefaultConfig({
   ssr: false,
 });
 
-export const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || '0x20E7979abDdE55F098a4Ec77edF2079685278F27';
+export const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || '0xD0Fa7a0bC4b44880fCABe2b875673926B7bb19A6';
 
 // Base Sepolia USDC Address
 export const USDC_ADDRESS = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
@@ -28,8 +28,50 @@ export const STAKE_AMOUNT = BigInt(1 * 1e6); // 1 USDC (6 decimals)
 export const REFUND_PERIOD = 2 * 24 * 60 * 60; // 2 days in seconds
 export const RELEASE_PERIOD = 7 * 24 * 60 * 60; // 7 days in seconds
 
-// Contract ABI - only the functions we need
+// V2 Contract ABI - Current deployed contract
 export const STAKE_MATCH_ABI = [
+  // V2 Getter Functions
+  {
+    "inputs": [{"internalType": "address", "name": "user", "type": "address"}],
+    "name": "getActiveIncomingStakes",
+    "outputs": [{
+      "components": [
+        {"internalType": "address", "name": "from", "type": "address"},
+        {"internalType": "address", "name": "to", "type": "address"},
+        {"internalType": "uint256", "name": "amount", "type": "uint256"},
+        {"internalType": "uint256", "name": "timestamp", "type": "uint256"},
+        {"internalType": "enum StakeMatchV2.StakeStatus", "name": "status", "type": "uint8"},
+        {"internalType": "bool", "name": "matched", "type": "bool"},
+        {"internalType": "uint256", "name": "matchedAt", "type": "uint256"}
+      ],
+      "internalType": "struct StakeMatchV2.StakeInfo[]",
+      "name": "",
+      "type": "tuple[]"
+    }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "address", "name": "user", "type": "address"}],
+    "name": "getActiveOutgoingStakes",
+    "outputs": [{
+      "components": [
+        {"internalType": "address", "name": "from", "type": "address"},
+        {"internalType": "address", "name": "to", "type": "address"},
+        {"internalType": "uint256", "name": "amount", "type": "uint256"},
+        {"internalType": "uint256", "name": "timestamp", "type": "uint256"},
+        {"internalType": "enum StakeMatchV2.StakeStatus", "name": "status", "type": "uint8"},
+        {"internalType": "bool", "name": "matched", "type": "bool"},
+        {"internalType": "uint256", "name": "matchedAt", "type": "uint256"}
+      ],
+      "internalType": "struct StakeMatchV2.StakeInfo[]",
+      "name": "",
+      "type": "tuple[]"
+    }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  // Original Functions
   {
     "inputs": [{ "internalType": "address", "name": "target", "type": "address" }],
     "name": "stakeToConnect",

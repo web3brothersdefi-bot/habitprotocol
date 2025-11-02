@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAccount } from 'wagmi';
+import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Send, ArrowLeft } from 'lucide-react';
 import Layout from '../components/Layout';
@@ -12,6 +13,8 @@ import { formatAddress, getRoleIcon, getIPFSUrl, formatRelativeTime } from '../u
 const Chats = () => {
   const { address, isConnected } = useAccount();
   const { user } = useAuthStore();
+  const [searchParams] = useSearchParams();
+  const withAddress = searchParams.get('with'); // Get 'with' query parameter
   const { matches, loading: matchesLoading } = useMatches();
   const [selectedChat, setSelectedChat] = useState(null);
   const [messageInput, setMessageInput] = useState('');
@@ -23,6 +26,22 @@ const Chats = () => {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  // Auto-select chat when 'with' parameter is present
+  useEffect(() => {
+    if (withAddress && matches.length > 0 && !selectedChat) {
+      const matchToSelect = matches.find(match => {
+        const otherUserAddress = match.user_a.toLowerCase() === address?.toLowerCase()
+          ? match.user_b.toLowerCase()
+          : match.user_a.toLowerCase();
+        return otherUserAddress === withAddress.toLowerCase();
+      });
+      
+      if (matchToSelect) {
+        setSelectedChat(matchToSelect);
+      }
+    }
+  }, [withAddress, matches, selectedChat, address]);
 
   useEffect(() => {
     scrollToBottom();

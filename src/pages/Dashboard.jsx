@@ -1,16 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAccount } from 'wagmi';
+import { useNavigate } from 'react-router-dom';
 import { motion, useMotionValue, useTransform } from 'framer-motion';
-import { X, Heart, Search, SlidersHorizontal, Sparkles, Zap } from 'lucide-react';
+import { X, Heart, Search, SlidersHorizontal, Sparkles, Zap, User } from 'lucide-react';
 import Layout from '../components/Layout';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import { useDiscoverUsers } from '../hooks/useSupabase';
-import { useStakeToConnect } from '../hooks/useAptosContract';
+import { useStakeToConnect, useApproveUSDC } from '../hooks/useBaseContract';
+import { useStakedAddresses } from '../hooks/useStakesFromBlockchain';
 import { useAuthStore } from '../store/useStore';
 import { getRoleBadgeClass, getRoleIcon, formatAddress, getIPFSUrl } from '../utils/helpers';
 import { toast } from 'react-hot-toast';
-import { useInitializeContract } from '../hooks/useInitializeContract';
+import { useReadContract } from 'wagmi';
+import { CONTRACT_ADDRESS, USDC_ADDRESS, ERC20_ABI, STAKE_AMOUNT } from '../config/wagmi';
 
 const SwipeCard = ({ user, onSwipe }) => {
   const x = useMotionValue(0);
@@ -154,32 +157,38 @@ const SwipeCard = ({ user, onSwipe }) => {
 const Dashboard = () => {
   const { address, isConnected } = useAccount();
   const { user } = useAuthStore();
+  const navigate = useNavigate();
   const [filters, setFilters] = useState({ role: null, skills: [] });
   const [showFilters, setShowFilters] = useState(false);
-  const { users, loading, refetch: refetchUsers } = useDiscoverUsers(filters);
+  const { users: allUsers, loading, refetch: refetchUsers } = useDiscoverUsers(filters);
+  const { stakedAddresses, loading: stakesLoading } = useStakedAddresses(); // Blockchain
   const [currentIndex, setCurrentIndex] = useState(0);
   const { stakeToConnect, loading: stakeLoading } = useStakeToConnect();
+  const { approveUSDC, loading: approvalLoading } = useApproveUSDC();
   const [isStaking, setIsStaking] = useState(false);
-  const [needsInit, setNeedsInit] = useState(false);
-  const [initializing, setInitializing] = useState(false);
-  const { initialize } = useInitializeContract();
+  
+  // Check USDC allowance
+  const { data: allowance, refetch: refetchAllowance } = useReadContract({
+    address: USDC_ADDRESS,
+    abi: ERC20_ABI,
+    functionName: 'allowance',
+    args: [address, CONTRACT_ADDRESS],
+    query: { enabled: !!address }
+  });
+
+  // Filter out users we've already staked to (from blockchain)
+  const users = useMemo(() => {
+    if (!stakedAddresses || stakedAddresses.length === 0) return allUsers;
+    
+    return allUsers.filter(u => 
+      !stakedAddresses.includes(u.wallet_address.toLowerCase())
+    );
+  }, [allUsers, stakedAddresses]);
 
   const currentUser = users[currentIndex];
 
-  const handleInitialize = async () => {
-    setInitializing(true);
-    try {
-      const result = await initialize();
-      if (result) {
-        setNeedsInit(false);
-        toast.success('Contract ready! You can now stake.');
-      }
-    } catch (error) {
-      console.error('Init error:', error);
-    } finally {
-      setInitializing(false);
-    }
-  };
+  // Check if user needs to approve USDC
+  const needsApproval = allowance ? BigInt(allowance) < STAKE_AMOUNT : true;
 
   const handleSwipe = async (direction) => {
     if (!currentUser) return;
@@ -189,32 +198,75 @@ const Dashboard = () => {
       try {
         setIsStaking(true);
 
-        // Stake to connect (APT native, no approval needed)
-        toast.loading('Staking 0.1 APT to connect...');
-        const result = await stakeToConnect(currentUser.wallet_address);
-        toast.dismiss();
+        // Step 1: Check if USDC approval is needed
+        if (needsApproval) {
+          toast.loading('Step 1/2: Approving USDC spending...', { duration: Infinity });
+          
+          try {
+            const approvalResult = await approveUSDC();
+            
+            if (!approvalResult) {
+              toast.dismiss();
+              toast.error('USDC approval failed');
+              setIsStaking(false);
+              return;
+            }
+            
+            toast.dismiss();
+            toast.success('✅ USDC approved! Now staking...', { duration: 2000 });
+            
+            // Refresh allowance
+            await refetchAllowance();
+          } catch (approvalError) {
+            toast.dismiss();
+            
+            if (approvalError.message?.includes('rejected')) {
+              toast.error('Approval rejected');
+            } else {
+              toast.error(approvalError.message || 'Approval failed');
+            }
+            
+            setIsStaking(false);
+            return;
+          }
+        }
+
+        // Step 2: Stake to connect (AUTO-PROCEEDS after approval)
+        const stepMessage = needsApproval ? 'Step 2/2: Staking 1 USDC...' : 'Staking 1 USDC...';
+        toast.loading(stepMessage, { duration: Infinity });
         
-        if (result) {
-          toast.success('Stake successful! Waiting for mutual interest...');
-          // Move to next user
-          setCurrentIndex((prev) => prev + 1);
-          // Refresh user list to exclude the staked user
-          setTimeout(() => {
-            refetchUsers();
-          }, 1000);
+        try {
+          const result = await stakeToConnect(currentUser.wallet_address);
+          toast.dismiss();
+          
+          if (result) {
+            toast.success('✅ Stake successful! Request sent.', { duration: 3000 });
+            
+            // Move to next user immediately
+            setCurrentIndex((prev) => prev + 1);
+            
+            // Refresh user list to exclude the staked user
+            setTimeout(() => {
+              refetchUsers();
+            }, 1000);
+          } else {
+            toast.error('Failed to stake');
+          }
+        } catch (stakeError) {
+          toast.dismiss();
+          
+          if (stakeError.message?.includes('rejected')) {
+            toast.error('Stake rejected');
+          } else if (stakeError.message?.includes('insufficient')) {
+            toast.error('Insufficient USDC or ETH for gas');
+          } else {
+            toast.error(stakeError.message || 'Failed to stake');
+          }
         }
       } catch (error) {
-        console.error('Stake error:', error);
+        console.error('Unexpected error:', error);
         toast.dismiss();
-        
-        // Check if contract needs initialization
-        if (error.message?.includes('E_NOT_INITIALIZED') || 
-            error.message?.includes('0x1')) {
-          setNeedsInit(true);
-          toast.error('Contract needs to be initialized first');
-        } else {
-          toast.error('Failed to stake. Please try again.');
-        }
+        toast.error('An unexpected error occurred');
       } finally {
         setIsStaking(false);
       }
@@ -269,6 +321,19 @@ const Dashboard = () => {
   return (
     <Layout>
       <div className="max-w-4xl mx-auto space-y-6">
+        {/* Loading Overlay */}
+        {isStaking && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+            <Card className="p-8 text-center">
+              <div className="flex justify-center mb-4">
+                <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+              </div>
+              <p className="text-lg font-semibold">Processing transaction...</p>
+              <p className="text-sm text-gray-400 mt-2">Please wait for confirmation</p>
+            </Card>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -295,48 +360,6 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Initialize Contract Warning */}
-        {needsInit && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
-            <Card className="p-6 bg-yellow-500/10 border-yellow-500/30">
-              <div className="flex items-start gap-4">
-                <Zap className="w-6 h-6 text-yellow-400 flex-shrink-0 mt-1" />
-                <div className="flex-1">
-                  <h3 className="text-lg font-bold text-yellow-400 mb-2">
-                    Contract Initialization Required
-                  </h3>
-                  <p className="text-sm text-yellow-200 mb-4">
-                    The smart contract needs to be initialized before anyone can stake. 
-                    This is a one-time setup that creates the stake registry on-chain.
-                  </p>
-                  <Button
-                    onClick={handleInitialize}
-                    disabled={initializing}
-                    className="bg-yellow-500 hover:bg-yellow-600 text-dark font-semibold"
-                  >
-                    {initializing ? (
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 border-2 border-dark/30 border-t-dark rounded-full animate-spin" />
-                        <span>Initializing...</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <Zap className="w-4 h-4" />
-                        <span>Initialize Contract (One-Time)</span>
-                      </div>
-                    )}
-                  </Button>
-                  <p className="text-xs text-yellow-300 mt-2">
-                    Cost: ~0.001 APT gas fee
-                  </p>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-        )}
 
         {/* Filters Panel */}
         {showFilters && (
@@ -383,6 +406,7 @@ const Dashboard = () => {
 
         {/* Action Buttons */}
         <div className="flex justify-center gap-6 pb-8">
+          {/* Pass Button */}
           <motion.button
             onClick={() => handleButtonSwipe('left')}
             disabled={isStaking}
@@ -393,6 +417,18 @@ const Dashboard = () => {
             <X className="w-8 h-8 text-red-500" />
           </motion.button>
 
+          {/* View Profile Button */}
+          <motion.button
+            onClick={() => currentUser && navigate(`/profile/${currentUser.wallet_address}`)}
+            disabled={isStaking || !currentUser}
+            className="w-16 h-16 rounded-full glass-card flex items-center justify-center hover:bg-primary/20 hover:border-primary transition-all disabled:opacity-50"
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+          >
+            <User className="w-8 h-8 text-primary" />
+          </motion.button>
+
+          {/* Like/Stake Button */}
           <motion.button
             onClick={() => handleButtonSwipe('right')}
             disabled={isStaking}

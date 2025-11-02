@@ -1,138 +1,170 @@
 import React, { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { motion } from 'framer-motion';
-import { RefreshCw, Trash2, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { RefreshCw, Trash2, AlertCircle, CheckCircle, Clock, ExternalLink } from 'lucide-react';
 import Layout from '../components/Layout';
 import Card from '../components/Card';
 import Button from '../components/Button';
-import { aptosClient, MODULE_ADDRESS, FUNCTIONS } from '../config/aptos';
-import { normalizeAddress } from '../config/aptos';
+import { useRefundStake, useReleaseStake } from '../hooks/useBaseContract';
+import { supabase, TABLES } from '../config/supabase';
+import { formatAddress } from '../utils/helpers';
 import { toast } from 'react-hot-toast';
 
 const ManageStakes = () => {
-  const { account, signAndSubmitTransaction } = useWallet();
+  const { address, isConnected } = useAccount();
   const [stakes, setStakes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refunding, setRefunding] = useState(null);
+  const [releasing, setReleasing] = useState(null);
+  const { refundStake: refundStakeContract } = useRefundStake();
+  const { releaseStake: releaseStakeContract } = useReleaseStake();
 
-  const fetchOnChainStakes = async () => {
-    if (!account) return;
+  const fetchMyStakes = async () => {
+    if (!address) return;
     
     setLoading(true);
     try {
-      // This is a workaround - we'll check the registry directly
-      const registryAddress = MODULE_ADDRESS;
+      // Fetch stakes from Supabase
+      const { data, error } = await supabase
+        .from(TABLES.STAKES)
+        .select(`
+          *,
+          target_user:target_address (
+            name,
+            wallet_address,
+            image_url,
+            role
+          )
+        `)
+        .eq('staker_address', address.toLowerCase())
+        .in('status', ['pending', 'matched'])
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      setStakes(data || []);
       
-      // Get all account resources to find stakes
-      const resources = await aptosClient.getAccountResources({
-        accountAddress: registryAddress,
-      });
-
-      const registryResource = resources.find(
-        (r) => r.type === `${MODULE_ADDRESS}::stake_match::StakeRegistry`
-      );
-
-      if (registryResource && registryResource.data) {
-        const allStakes = registryResource.data.stakes || [];
-        
-        // Filter stakes where current user is the staker
-        const myStakes = allStakes.filter(
-          (stake) => normalizeAddress(stake.staker) === normalizeAddress(account.address)
-        );
-
-        setStakes(myStakes);
-        
-        if (myStakes.length === 0) {
-          toast.success('No pending stakes found! You can stake freely.');
-        }
+      if (!data || data.length === 0) {
+        console.log('No active stakes found');
       }
     } catch (error) {
       console.error('Error fetching stakes:', error);
-      toast.error('Failed to fetch stakes from blockchain');
+      toast.error('Failed to fetch stakes');
     } finally {
       setLoading(false);
     }
   };
 
-  const refundStake = async (targetAddress) => {
-    if (!account) return;
+  const handleRefund = async (stake) => {
+    if (!address) return;
 
-    setRefunding(targetAddress);
+    // Check if 2 days have passed
+    const stakeDate = new Date(stake.created_at);
+    const twoDays = 2 * 24 * 60 * 60 * 1000; // 2 days in ms
+    const elapsed = Date.now() - stakeDate.getTime();
+    
+    if (elapsed < twoDays) {
+      const hoursLeft = Math.ceil((twoDays - elapsed) / (60 * 60 * 1000));
+      toast.error(`Cannot refund yet. Wait ${hoursLeft} more hours.`);
+      return;
+    }
+
+    setRefunding(stake.target_address);
     try {
-      const normalizedTarget = normalizeAddress(targetAddress);
-
-      const payload = {
-        data: {
-          function: FUNCTIONS.REFUND_EXPIRED_STAKE,
-          typeArguments: [],
-          functionArguments: [normalizedTarget, MODULE_ADDRESS],
-        },
-      };
-
-      const response = await signAndSubmitTransaction(payload);
+      toast.loading('Requesting refund...');
       
-      const txn = await aptosClient.waitForTransaction({
-        transactionHash: response.hash,
-      });
-
-      if (txn.success) {
-        toast.success('Stake refunded! 💰 You can now stake again.');
+      const result = await refundStakeContract(stake.target_address);
+      
+      if (result) {
+        toast.dismiss();
+        toast.success('💰 Refund successful!');
+        
+        // Update stake status in Supabase
+        await supabase
+          .from(TABLES.STAKES)
+          .update({ status: 'refunded' })
+          .eq('staker_address', address.toLowerCase())
+          .eq('target_address', stake.target_address.toLowerCase());
+        
         // Refresh stakes list
-        setTimeout(() => {
-          fetchOnChainStakes();
-        }, 1000);
+        setTimeout(() => fetchMyStakes(), 2000);
       } else {
+        toast.dismiss();
         toast.error('Refund failed');
       }
     } catch (error) {
-      console.error('Refund error:', error);
-      
-      if (error.message?.includes('E_REFUND_PERIOD_NOT_ELAPSED')) {
-        toast.error('Must wait 2 days before refunding. Try clearing stale stakes instead.');
-      } else {
-        toast.error(error.message || 'Failed to refund');
-      }
+      console.error('Error refunding:', error);
+      toast.dismiss();
+      toast.error(error.message || 'Failed to refund stake');
     } finally {
       setRefunding(null);
     }
   };
 
-  const clearAllStaleStakes = async () => {
-    if (!account || stakes.length === 0) return;
+  const handleRelease = async (stake) => {
+    if (!address) return;
 
-    setLoading(true);
-    let successCount = 0;
+    // Check if 7 days have passed since match
+    if (!stake.matched_at) {
+      toast.error('Stake not matched yet');
+      return;
+    }
     
-    for (const stake of stakes) {
-      try {
-        await refundStake(stake.target);
-        successCount++;
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait between refunds
-      } catch (error) {
-        console.error('Failed to refund stake:', stake.target, error);
+    const matchDate = new Date(stake.matched_at);
+    const sevenDays = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
+    const elapsed = Date.now() - matchDate.getTime();
+    
+    if (elapsed < sevenDays) {
+      const daysLeft = Math.ceil((sevenDays - elapsed) / (24 * 60 * 60 * 1000));
+      toast.error(`Cannot release yet. Wait ${daysLeft} more days.`);
+      return;
+    }
+
+    setReleasing(stake.target_address);
+    try {
+      toast.loading('Releasing stake...');
+      
+      const result = await releaseStakeContract(stake.target_address);
+      
+      if (result) {
+        toast.dismiss();
+        toast.success('🎉 Stake released! 99% returned.');
+        
+        // Update stake status in Supabase
+        await supabase
+          .from(TABLES.STAKES)
+          .update({ status: 'released' })
+          .eq('staker_address', address.toLowerCase())
+          .eq('target_address', stake.target_address.toLowerCase());
+        
+        // Refresh stakes list
+        setTimeout(() => fetchMyStakes(), 2000);
+      } else {
+        toast.dismiss();
+        toast.error('Release failed');
       }
+    } catch (error) {
+      console.error('Error releasing:', error);
+      toast.dismiss();
+      toast.error(error.message || 'Failed to release stake');
+    } finally {
+      setReleasing(null);
     }
-
-    if (successCount > 0) {
-      toast.success(`Cleared ${successCount} stale stake(s)!`);
-    }
-    
-    setLoading(false);
   };
 
   useEffect(() => {
-    if (account) {
-      fetchOnChainStakes();
+    if (address) {
+      fetchMyStakes();
     }
-  }, [account]);
+  }, [address]);
 
-  if (!account) {
+  if (!address) {
     return (
       <Layout>
         <div className="flex items-center justify-center min-h-[60vh]">
           <Card className="p-8 text-center">
             <AlertCircle className="w-16 h-16 text-yellow-400 mx-auto mb-4" />
-            <h2 className="text-xl font-bold mb-2">Wallet Not isConnected</h2>
+            <h2 className="text-xl font-bold mb-2">Wallet Not Connected</h2>
             <p className="text-gray-400">Please connect your wallet to manage stakes</p>
           </Card>
         </div>
@@ -158,7 +190,7 @@ const ManageStakes = () => {
               </p>
             </div>
             <Button
-              onClick={fetchOnChainStakes}
+              onClick={fetchMyStakes}
               disabled={loading}
               variant="secondary"
             >
@@ -216,76 +248,135 @@ const ManageStakes = () => {
             <>
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-bold text-white">
-                  Pending Stakes ({stakes.length})
+                  Active Stakes ({stakes.length})
                 </h2>
-                {stakes.length > 1 && (
-                  <Button
-                    onClick={clearAllStaleStakes}
-                    disabled={loading}
-                    variant="secondary"
-                    className="bg-red-500/20 hover:bg-red-500/30 text-red-400"
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Clear All
-                  </Button>
-                )}
               </div>
 
               <div className="space-y-4">
-                {stakes.map((stake, index) => (
-                  <Card key={index} className="p-6">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Clock className="w-5 h-5 text-yellow-400" />
-                          <h3 className="font-bold text-white">Pending Stake</h3>
-                        </div>
-                        <div className="space-y-1 text-sm">
-                          <p className="text-gray-400">
-                            <span className="text-gray-500">To:</span>{' '}
-                            <span className="font-mono">{stake.target.slice(0, 10)}...{stake.target.slice(-8)}</span>
-                          </p>
-                          <p className="text-gray-400">
-                            <span className="text-gray-500">Amount:</span>{' '}
-                            <span className="text-primary font-semibold">0.1 APT</span>
-                          </p>
-                          <p className="text-gray-400">
-                            <span className="text-gray-500">Status:</span>{' '}
-                            {stake.status?.pending ? (
-                              <span className="text-yellow-400">Pending</span>
-                            ) : stake.status?.matched ? (
-                              <span className="text-green-400">Matched</span>
-                            ) : stake.status?.refunded ? (
-                              <span className="text-blue-400">Refunded</span>
+                {stakes.map((stake, index) => {
+                  const stakeDate = new Date(stake.created_at);
+                  const canRefund = stake.status === 'pending' && (Date.now() - stakeDate.getTime()) >= (2 * 24 * 60 * 60 * 1000);
+                  const canRelease = stake.status === 'matched' && stake.matched_at && (Date.now() - new Date(stake.matched_at).getTime()) >= (7 * 24 * 60 * 60 * 1000);
+                  
+                  return (
+                    <Card key={stake.id || index} className="p-6">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-3">
+                            {stake.status === 'matched' ? (
+                              <CheckCircle className="w-5 h-5 text-green-400" />
                             ) : (
-                              <span className="text-gray-400">Unknown</span>
+                              <Clock className="w-5 h-5 text-yellow-400" />
                             )}
-                          </p>
+                            <h3 className="font-bold text-white">
+                              {stake.status === 'matched' ? 'Matched Stake' : 'Pending Stake'}
+                            </h3>
+                          </div>
+                          
+                          <div className="space-y-2 text-sm">
+                            <div>
+                              <span className="text-gray-500">To: </span>
+                              {stake.target_user?.name ? (
+                                <span className="font-semibold">{stake.target_user.name}</span>
+                              ) : (
+                                <span className="font-mono text-xs">{formatAddress(stake.target_address)}</span>
+                              )}
+                            </div>
+                            
+                            <div>
+                              <span className="text-gray-500">Amount: </span>
+                              <span className="text-primary font-semibold">1 USDC</span>
+                            </div>
+                            
+                            <div>
+                              <span className="text-gray-500">Status: </span>
+                              {stake.status === 'pending' && <span className="text-yellow-400">⏳ Pending</span>}
+                              {stake.status === 'matched' && <span className="text-green-400">✅ Matched</span>}
+                            </div>
+                            
+                            <div>
+                              <span className="text-gray-500">Created: </span>
+                              <span className="text-gray-400">{stakeDate.toLocaleDateString()}</span>
+                            </div>
+                            
+                            {stake.matched_at && (
+                              <div>
+                                <span className="text-gray-500">Matched: </span>
+                                <span className="text-gray-400">{new Date(stake.matched_at).toLocaleDateString()}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          {/* Refund Button (for pending stakes after 2 days) */}
+                          {stake.status === 'pending' && (
+                            <Button
+                              onClick={() => handleRefund(stake)}
+                              disabled={!canRefund || refunding === stake.target_address}
+                              className={`${
+                                canRefund 
+                                  ? 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border-red-500/30' 
+                                  : 'opacity-50 cursor-not-allowed'
+                              }`}
+                              title={!canRefund ? 'Wait 2 days before refunding' : 'Refund stake'}
+                            >
+                              {refunding === stake.target_address ? (
+                                <>
+                                  <div className="w-4 h-4 border-2 border-red-400/30 border-t-red-400 rounded-full animate-spin mr-2" />
+                                  Refunding...
+                                </>
+                              ) : (
+                                <>
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  {canRefund ? 'Refund' : 'Wait 2 days'}
+                                </>
+                              )}
+                            </Button>
+                          )}
+                          
+                          {/* Release Button (for matched stakes after 7 days) */}
+                          {stake.status === 'matched' && (
+                            <Button
+                              onClick={() => handleRelease(stake)}
+                              disabled={!canRelease || releasing === stake.target_address}
+                              className={`${
+                                canRelease 
+                                  ? 'bg-green-500/20 hover:bg-green-500/30 text-green-400 border-green-500/30' 
+                                  : 'opacity-50 cursor-not-allowed'
+                              }`}
+                              title={!canRelease ? 'Wait 7 days after match' : 'Release stake'}
+                            >
+                              {releasing === stake.target_address ? (
+                                <>
+                                  <div className="w-4 h-4 border-2 border-green-400/30 border-t-green-400 rounded-full animate-spin mr-2" />
+                                  Releasing...
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle className="w-4 h-4 mr-2" />
+                                  {canRelease ? 'Release' : 'Wait 7 days'}
+                                </>
+                              )}
+                            </Button>
+                          )}
+                          
+                          {/* View on BaseScan */}
+                          {stake.transaction_hash && (
+                            <Button
+                              onClick={() => window.open(`https://sepolia.basescan.org/tx/${stake.transaction_hash}`, '_blank')}
+                              variant="secondary"
+                              className="text-xs"
+                            >
+                              <ExternalLink className="w-3 h-3 mr-1" />
+                              View TX
+                            </Button>
+                          )}
                         </div>
                       </div>
-
-                      <div className="flex flex-col gap-2">
-                        <Button
-                          onClick={() => refundStake(stake.target)}
-                          disabled={refunding === stake.target}
-                          className="bg-red-500/20 hover:bg-red-500/30 text-red-400 border-red-500/30"
-                        >
-                          {refunding === stake.target ? (
-                            <>
-                              <div className="w-4 h-4 border-2 border-red-400/30 border-t-red-400 rounded-full animate-spin mr-2" />
-                              Refunding...
-                            </>
-                          ) : (
-                            <>
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Refund
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    </div>
                   </Card>
-                ))}
+                  );
+                })}
               </div>
             </>
           )}
