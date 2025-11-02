@@ -17,6 +17,7 @@
     "axios": "^1.6.5",
     "@aptos-labs/ts-sdk": "^1.10.0",
 "@aptos-labs/wallet-adapter-react": "^2.1.0",
+    "petra-plugin-wallet-adapter": "^0.4.1",
     "ethers": "^6.13.1",
     "framer-motion": "^11.0.3",
     "lucide-react": "^0.300.0",
