@@ -16,6 +16,7 @@
     "@telegram-apps/bridge": "^2.11.0",
     "axios": "^1.6.5",
     "@aptos-labs/ts-sdk": "^1.10.0",
+"@aptos-labs/wallet-adapter-react": "^2.1.0",
     "ethers": "^6.13.1",
     "framer-motion": "^11.0.3",
     "lucide-react": "^0.300.0",
